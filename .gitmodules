@@ -1,0 +1,3 @@
+[submodule "pb"]
+	path = pb
+	url = https://github.com/MamangRust/simple_microservice_ecommerce_pb

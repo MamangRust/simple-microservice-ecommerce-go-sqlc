@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package pb.order;
+
+option go_package = "github.com/MamangRust/simple_microservice_ecommerce_pb/order";
+
+import "google/protobuf/empty.proto";
+import "order/common.proto";
+
+message CreateOrderItemRequest {
+  int32 product_id = 1;
+  int32 quantity = 2;
+  int32 price = 3;
+}
+
+message UpdateOrderItemRequest {
+  int32 order_item_id = 1;
+  int32 product_id = 2;
+  int32 quantity = 3;
+  int32 price = 4;
+}
+
+message CreateOrderRequest {
+  int32 user_id = 1;
+  repeated CreateOrderItemRequest items = 2;
+}
+
+message UpdateOrderRequest {
+  int32 order_id = 1;
+  int32 user_id = 2;
+  repeated UpdateOrderItemRequest items = 3;
+}
+
+message ApiResponseOrderDelete {
+  string status = 1;
+  string message = 2;
+}
+
+message ApiResponseOrderAll {
+  string status = 1;
+  string message = 2;
+}
+
+service OrderCommandService {
+  rpc Create(CreateOrderRequest) returns (pb.order.ApiResponseOrder);
+  rpc Update(UpdateOrderRequest) returns (pb.order.ApiResponseOrder);
+
+  rpc Trashed(pb.order.FindByIdOrderRequest)
+      returns (pb.order.ApiResponseOrderDeleteAt);
+  rpc Restore(pb.order.FindByIdOrderRequest)
+      returns (pb.order.ApiResponseOrderDeleteAt);
+  rpc DeleteOrderPermanent(pb.order.FindByIdOrderRequest)
+      returns (pb.order.ApiResponseOrderDelete);
+
+  rpc RestoreAllOrder(google.protobuf.Empty) returns (ApiResponseOrderAll);
+  rpc DeleteAllOrder(google.protobuf.Empty) returns (ApiResponseOrderAll);
+}
