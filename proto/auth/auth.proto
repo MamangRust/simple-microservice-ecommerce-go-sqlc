@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package pb.auth;
 
-option go_package = "github.com/MamangRust/simple_microservice_ecommerce_pb/auth";
-
 import "common/common.proto";
 import "user/common.proto";
 

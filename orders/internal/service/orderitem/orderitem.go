@@ -17,6 +17,11 @@ type orderItemService struct {
 	logger     logger.LoggerInterface
 }
 
+type OrderItemServiceDeps struct {
+	Repository orderitemrepository.OrderItemQueryRepository
+	Logger     logger.LoggerInterface
+}
+
 func NewOrderItemService(deps *OrderItemServiceDeps) OrderItemQueryService {
 	orderitemmapper := orderitemservicemapper.NewOrderItemResponseMapper()
 
