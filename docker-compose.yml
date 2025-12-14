@@ -93,17 +93,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  apigateway:
-    build:
-      context: ./apigateway
-      dockerfile: Dockerfile
-    env_file: ./docker.env
-    volumes:
-      - ./docker.env:/app/docker.env
-      - ./logs:/var/log/app
-      - ./uploads:/app/uploads
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: pgbouncer
     ports:
-      - "5000:5000"
+      - "6432:6432"
+      - "6433:6433" 
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+      - ./pgbouncer/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ./pgbouncer/health-check.sh:/usr/local/bin/health-check.sh:ro
+      - ./pgbouncer/manage.sh:/usr/local/bin/manage.sh:ro
+      - pgbouncer_logs:/var/log/pgbouncer
+      - pgbouncer_data:/var/lib/pgbouncer
     networks:
       - app_simple_ecommerce_network
     depends_on:
@@ -116,6 +120,48 @@ services:
       postgres_role:
         condition: service_healthy
       postgres_users:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    environment:
+      - PGBOUNCER_ADMIN_USER=admin
+      - PGBOUNCER_ADMIN_PASS=admin_password
+      - PGBOUNCER_STATS_USER=stats
+      - PGBOUNCER_STATS_PASS=stats_password
+    command: ["pgbouncer", "/etc/pgbouncer/pgbouncer.ini"]
+
+  apigateway:
+    build:
+      context: ./services/apigateway
+      dockerfile: Dockerfile
+    env_file: ./docker.env
+    volumes:
+      - ./docker.env:/app/docker.env
+      - ./logs:/var/log/app
+      - ./uploads:/app/uploads
+    ports:
+      - "5000:5000"
+    networks:
+      - app_simple_ecommerce_network
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis_apigateway:
+        condition: service_healthy
+      redis_auth:
+        condition: service_healthy
+      redis_orders:
+        condition: service_healthy
+      redis_products:
+        condition: service_healthy
+      redis_role:
+        condition: service_healthy
+      redis_users:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -136,7 +182,7 @@ services:
 
   auth:
     build:
-      context: ./auth
+      context: ./services/auth
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -145,7 +191,9 @@ services:
     networks:
       - app_simple_ecommerce_network
     depends_on:
-      postgres_auth:
+      pgbouncer:
+        condition: service_healthy
+      redis_auth:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -153,15 +201,15 @@ services:
       - OTEL_ENDPOINT=otel-collector:4317
       - APP_ENV=docker
       - KAFKA_BROKERS=kafka:9092
-      - DB_HOST=postgres_auth
-      - DB_PORT=5432
+      - DB_HOST=pgbouncer
+      - DB_PORT=6432
       - DB_USERNAME=auth_user
       - DB_PASSWORD=auth_password
       - DB_NAME=auth_db
 
   role:
     build:
-      context: ./role
+      context: ./services/role
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -170,7 +218,9 @@ services:
     networks:
       - app_simple_ecommerce_network
     depends_on:
-      postgres_role:
+      pgbouncer:
+        condition: service_healthy
+      redis_role:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -178,15 +228,15 @@ services:
       - OTEL_ENDPOINT=otel-collector:4317
       - APP_ENV=docker
       - KAFKA_BROKERS=kafka:9092
-      - DB_HOST=postgres_role
-      - DB_PORT=5432
+      - DB_HOST=pgbouncer
+      - DB_PORT=6432
       - DB_USERNAME=role_user
       - DB_PASSWORD=role_password
       - DB_NAME=role_db
 
   user:
     build:
-      context: ./users
+      context: ./services/users
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -197,7 +247,9 @@ services:
     networks:
       - app_simple_ecommerce_network
     depends_on:
-      postgres_users:
+      pgbouncer:
+        condition: service_healthy
+      redis_users:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -213,7 +265,7 @@ services:
 
   email:
     build:
-      context: ./email
+      context: ./services/email
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -231,7 +283,7 @@ services:
 
   order:
     build:
-      context: ./orders
+      context: ./services/orders
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -240,7 +292,9 @@ services:
     networks:
       - app_simple_ecommerce_network
     depends_on:
-      postgres_orders:
+      pgbouncer:
+        condition: service_healthy
+      redis_orders:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -256,7 +310,7 @@ services:
 
   product:
     build:
-      context: ./products
+      context: ./services/products
       dockerfile: Dockerfile
     env_file: ./docker.env
     volumes:
@@ -265,7 +319,9 @@ services:
     networks:
       - app_simple_ecommerce_network
     depends_on:
-      postgres_products:
+      pgbouncer:
+        condition: service_healthy
+      redis_products:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -278,6 +334,102 @@ services:
       - DB_USERNAME=products_user
       - DB_PASSWORD=products_password
       - DB_NAME=products_db
+
+  redis_apigateway:
+    image: redis:7.4
+    container_name: redis_apigateway
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_apigateway_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
+
+  redis_auth:
+    image: redis:7.4
+    container_name: redis_auth
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_auth_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
+
+  redis_orders:
+    image: redis:7.4
+    container_name: redis_orders
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_orders_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
+
+  redis_products:
+    image: redis:7.4
+    container_name: redis_products
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_products_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
+
+  redis_role:
+    image: redis:7.4
+    container_name: redis_role
+    ports:
+      - "6383:6379"
+    volumes:
+      - redis_role_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
+
+  redis_users:
+    image: redis:7.4
+    container_name: redis_users
+    ports:
+      - "6384:6379"
+    volumes:
+      - redis_users_data:/data
+    networks:
+      - app_simple_ecommerce_network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --requirepass dragon_knight
 
   zookeeper:
     image: zookeeper:latest
@@ -344,12 +496,98 @@ services:
       retries: 3
 
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.74.0
+    container_name: jaeger-ecommerce
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - app_simple_ecommerce_network
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter-ecommerce
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - '/:/host:ro,rslave'
+    networks:
+      - app_simple_ecommerce_network
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus-ecommerce
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+    networks:
+      - app_simple_ecommerce_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-ecommerce
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_ecommerce_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+    networks:
+      - app_simple_ecommerce_network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+      - "8889:8889"
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    restart: unless-stopped
+    networks:
+      - app_simple_ecommerce_network
+
+  loki:
+    container_name: loki_debug
+    image: grafana/loki:3.5.8
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_ecommerce_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - app_simple_ecommerce_network
+
+
 volumes:
   postgres_auth_data:
   postgres_orders_data:
   postgres_products_data:
   postgres_role_data:
   postgres_users_data:
+  redis_apigateway_data:
+  redis_auth_data:
+  redis_orders_data:
+  redis_products_data:
+  redis_role_data:
+  redis_users_data:
+  loki_ecommerce_data: 
+  grafana_ecommerce_data:
+  pgbouncer_logs:
+  pgbouncer_data:
   kafka_ecommerce_data:
 
 networks:
