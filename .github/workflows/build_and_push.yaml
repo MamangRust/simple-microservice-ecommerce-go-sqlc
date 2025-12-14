@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [apigateway, auth, user, role, orders, products]
+        service: [apigateway, auth, users, role, orders, products]
 
     steps:
       - name: Checkout
@@ -33,8 +33,8 @@ jobs:
           labels: |
             org.opencontainers.image.title=${{ matrix.service }}
             org.opencontainers.image.description=Microservice ${{ matrix.service }} for Payment Gateway
-            org.opencontainers.image.source=https://github.com/mamangrust/monolith-payment-gateway-grpc
-            org.opencontainers.image.url=https://github.com/mamangrust/monolith-payment-gateway-grpc
+            org.opencontainers.image.source=https://github.com/mamangrust/simple-microservice-ecommerce-go-sqlc
+            org.opencontainers.image.url=https://github.com/mamangrust/simple-microservice-ecommerce-go-sqlc
             org.opencontainers.image.licenses=MIT
 
       - name: Set up Docker Buildx
@@ -60,5 +60,5 @@ jobs:
           file: ./services/${{ matrix.service }}/Dockerfile
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ghcr.io/mamangrust/monolith-payment-gateway-grpc/${{ matrix.service }}:latest
+            ghcr.io/mamangrust/simple-microservice-ecommerce-go-sqlc/${{ matrix.service }}:latest
           labels: ${{ steps.meta.outputs.labels }}
